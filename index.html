@@ -134,7 +134,7 @@
 
   /* ---------- quick record ---------- */
   .panel { background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: 14px; }
-  .quick-grid { display:grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
+  .quick-grid { display:grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
   .qbtn { display:flex; flex-direction:column; align-items:center; gap:8px; padding: 13px 2px 11px; border:none; cursor:pointer;
     border-radius: var(--radius-tile); background: var(--surface-card); border:1px solid var(--border); box-shadow: var(--shadow-card);
     text-align:center; transition: transform .12s, border-color .15s, box-shadow .15s; }
@@ -395,7 +395,7 @@
 const CONFIG = {
   storageKey: "campus-workbench-v1",
   owner: "我的智能工作台",
-  slogan: "Campus Workbench · v2",
+  slogan: "Campus Workbench · v3",
   brand: "学",
 
   // 每日一句（周一→周日）
@@ -416,6 +416,7 @@ const CONFIG = {
     { label: "加任务", icon: "list",     module: "todo" },
     { label: "加课程", icon: "calendar", module: "classes" },
     { label: "加动作", icon: "activity", module: "gym" },
+    { label: "排家教", icon: "book",     module: "tutor" },
   ],
 
   modules: [
@@ -436,7 +437,7 @@ const CONFIG = {
     {
       key: "money", name: "记账", icon: "wallet", tint: "#e2f0e7", color: "var(--module-1)",
       type: "finance", desc: "收入 · 支出 · 分类 · 今日/本周/本月",
-      categories: ["食堂", "外卖", "奶茶零食", "交通", "学习", "购物", "娱乐", "话费", "其他"],
+      categories: ["食堂", "外卖", "奶茶零食", "交通", "学习", "购物", "娱乐", "话费", "家教", "其他"],
       fields: [
         { key: "remark", label: "备注", type: "text", placeholder: "比如：和室友拼单" },
       ],
@@ -492,10 +493,19 @@ const CONFIG = {
       ],
     },
     {
-      key: "ai", name: "AI助手", icon: "bot", tint: "#eeecf6", color: "var(--module-5)",
-      type: "ai", desc: "能听懂人话：记账 · 记饮食 · 查课 · 查训练",
+      key: "tutor", name: "家教", icon: "book", tint: "#e8ecfb", color: "#4a63b8",
+      type: "tutor", desc: "排课 · 上课打卡 · 课时费自动入账",
       seed: [
-        { role: "ai", text: "你好！我现在真的能帮你干活了：\n· 记账：「今天午饭花了18块」\n· 记饮食：「早饭吃了两个鸡蛋一杯牛奶」\n· 查热量：「我今天摄入了多少热量」\n· 查课表：「我今天有什么课」\n· 查训练：「今天练什么」\n· 做安排：「帮我安排今天」\n直接打字，或点下面的快捷问题试试。" },
+        { id: 31, student: "小雨", subject: "数学", title: "小雨·数学", date: daysAgo(1), start: "16:00", end: "18:00", fee: 150, status: "done", note: "" },
+        { id: 32, student: "小雨", subject: "数学", title: "小雨·数学", date: isoToday(), start: "16:00", end: "18:00", fee: 150, status: "pending", note: "线上 · 腾讯会议" },
+        { id: 33, student: "小杰", subject: "英语", title: "小杰·英语", date: shiftIso(isoToday(),1), start: "19:00", end: "20:30", fee: 120, status: "pending", note: "第一次课，先做学情沟通" },
+      ],
+    },
+    {
+      key: "ai", name: "AI助手", icon: "bot", tint: "#eeecf6", color: "var(--module-5)",
+      type: "ai", desc: "能听懂人话：记账 · 记饮食 · 排家教 · 查课 · 查训练",
+      seed: [
+        { role: "ai", text: "你好！我现在真的能帮你干活了：\n· 记账：「今天午饭花了18块」\n· 记饮食：「早饭吃了两个鸡蛋一杯牛奶」\n· 排家教：「明天下午3点给小雨排2小时数学，150块」\n· 家教打卡：「小雨的课上完了」\n· 查热量：「我今天摄入了多少热量」\n· 查课表：「我今天有什么课」\n· 查训练：「今天练什么」\n· 做安排：「帮我安排今天」\n直接打字，或点下面的快捷问题试试。" },
       ],
     },
   ],
@@ -581,7 +591,19 @@ let gymDay = null;     // 健身页当前选中的星期（null = 今天）
 let todoDate = null;   // 任务页查看的日期（null = 今天）
 let moneyDate = null;  // 记账页查看的日期（null = 全部记录）
 let dietDate = null;   // 饮食页查看的日期（null = 今天）
+let tutorDate = null;  // 家教页查看的日期（null = 今天）
 function persist(){ store.save(); render(); }
+
+// 家教打卡：上完了自动把课时费记进「记账」收入；取消打卡则撤回那笔收入
+function tutorToggleDone(x,on){
+  if(on){ x.status="done";
+    if(!x.moneyId){ const mid=Date.now(); x.moneyId=mid;
+      (data.money=data.money||[]).unshift({ id:mid, title:`家教·${x.student||"学生"}`, type:"income", amount:+x.fee||0, category:"家教", date:x.date||today(), remark:"家教打卡自动入账" });
+    }
+  } else { x.status="pending";
+    if(x.moneyId){ data.money=(data.money||[]).filter(r=>r.id!==x.moneyId); delete x.moneyId; }
+  }
+}
 
 /* ---------- 日期导航 ---------- */
 function shiftIso(iso,n){ const d=new Date(iso+"T00:00:00"); d.setDate(d.getDate()+n); return isoDay(d); }
@@ -593,8 +615,8 @@ function dateLabel(iso){
 }
 function guessMeal(){ const h=new Date().getHours(); return h<10?"早餐":h<14?"午餐":h<20?"晚餐":"加餐"; }
 const dateState = {
-  get(k){ return k==="money"?moneyDate : k==="diet"?dietDate : todoDate; },
-  set(k,v){ if(k==="money") moneyDate=v; else if(k==="diet") dietDate=v; else todoDate=v; },
+  get(k){ return k==="money"?moneyDate : k==="diet"?dietDate : k==="tutor"?tutorDate : todoDate; },
+  set(k,v){ if(k==="money") moneyDate=v; else if(k==="diet") dietDate=v; else if(k==="tutor") tutorDate=v; else todoDate=v; },
 };
 function dateNavHTML(cur, allLabel){
   const eff = cur || (allLabel ? null : today());
@@ -676,6 +698,11 @@ function renderHome(){
     <div class="mini" data-open="todo"><div class="l">今日任务</div><div class="v">${doneN}/${todos.length}</div></div>
   </div>`;
   const dietMini=`<div class="mini wide" data-open="diet"><span class="wic" style="background:${dietMod.tint};color:${dietMod.color}">${icon("flame",18)}</span><div style="flex:1;min-width:0"><div class="l">今日饮食 · ${dietToday.length} 餐</div><div class="v">${dietToday.length?`${fmt(dietKcal)} kcal · 蛋白质 ${fmt(dietP)} g`:"还没记录，告诉 AI 你吃了啥"}</div></div>${icon("chevron",16,2)}</div>`;
+  // 今日家教
+  const tutorMod=modOf("tutor");
+  const tutorToday=(data.tutor||[]).filter(x=>x.date===t).sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
+  const tutorNext=tutorToday.find(x=>x.status!=="done");
+  const tutorMini=`<div class="mini wide" data-open="tutor"><span class="wic" style="background:${tutorMod.tint};color:${tutorMod.color}">${icon("book",18)}</span><div style="flex:1;min-width:0"><div class="l">今日家教 · ${tutorToday.length} 节</div><div class="v">${tutorToday.length?(tutorNext?`下一节 ${tutorNext.start||"--:--"} ${esc(tutorNext.student||"学生")}·${esc(tutorNext.subject||"课程")}`:"全部上完啦，课时费已入账"):"今天没有排课，点这里排一节"}</div></div>${icon("chevron",16,2)}</div>`;
   const overdueBar = overdue.length ? `<div class="pin-empty" id="js-rollover" style="border-style:solid;cursor:pointer">${icon("bolt",13)} 有 ${overdue.length} 件之前没做完的事 · 点这里移到今天</div>` : "";
 
   const courseSec=courses.length
@@ -715,7 +742,7 @@ function renderHome(){
   $("#screen").innerHTML = `
     <div class="greet"><div><h1>${hi}，同学</h1><p>${fullDate} · 欢迎回到你的工作台</p></div></div>
     <div class="quote"><span class="tag">${icon("quote",13)} 今日一句</span><div class="txt">${esc(q)}</div></div>
-    <div class="sec-title">今日概览</div>${minis}${dietMini}
+    <div class="sec-title">今日概览</div>${minis}${dietMini}${tutorMini}
     <div class="sec-title">今天的课程<span class="more" data-open="classes">课表 ${icon("chevron",12,2)}</span></div>${courseSec}
     <div class="sec-title">今天的健身训练<span class="more" data-open="gym">去训练 ${icon("chevron",12,2)}</span></div>${gymSec}
     <div class="sec-title">今日任务 · ${doneN}/${todos.length}<span class="more" data-open="todo">全部 ${icon("chevron",12,2)}</span></div>
@@ -905,6 +932,20 @@ function renderModule(key){
       const sub=rows.reduce((s,x)=>s+(+x.kcal||0),0);
       return `<div class="meal-g">${ml}<span class="sub">小计 ${fmt(sub)} kcal</span></div>`+rows.map(x=>recHTML(m,x)).join("");
     }).join("") : emptyBox(m,"这一天还没有饮食记录，点「新建」或告诉 AI 助手你吃了什么");
+  } else if(m.type==="tutor"){
+    const day=tutorDate||t;
+    const wk=weekStartIso(), mm=t.slice(0,7);
+    const todayN=it.filter(x=>x.date===t).length;
+    const weekDone=it.filter(x=>x.status==="done"&&x.date>=wk&&x.date<=t).length;
+    const monthFee=it.filter(x=>x.status==="done"&&(x.date||"").startsWith(mm)).reduce((s,x)=>s+(+x.fee||0),0);
+    head=`<div class="mod-summary">
+      <div class="mini"><div class="l">今日课次</div><div class="v" style="color:#4a63b8">${todayN} 节</div></div>
+      <div class="mini"><div class="l">本周已上</div><div class="v">${weekDone} 节</div></div>
+      <div class="mini"><div class="l">本月课时费</div><div class="v" style="color:var(--module-1)">¥${fmt(monthFee)}</div></div></div>`;
+    chipsBar=dateNavHTML(tutorDate);
+    const list=it.filter(x=>x.date===day).sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
+    bodyTitle=day===t?`今天的家教 · ${list.length} 节`:dateLabel(day)+"的家教";
+    body=list.length?list.map(x=>recHTML(m,x)).join(""):emptyBox(m,"这一天没有排课，点「新建」排一节（日期可以选未来），或直接告诉 AI 助手");
   }
 
   $("#screen").innerHTML = `<div class="greet"><div><h1>${m.name}</h1><p>${m.desc}</p></div>
@@ -949,6 +990,15 @@ function recHTML(m,x){
       <div class="rmeta"><span class="badge" style="background:${m.tint};color:${m.color}">${esc(x.meal||'加餐')}</span><span style="color:var(--text-secondary);font-size:12px">蛋白质 ${fmt(x.protein||0)} · 碳水 ${fmt(x.carbs||0)} · 脂肪 ${fmt(x.fat||0)}</span></div></div>
       <div class="amt" style="margin-left:auto;color:var(--module-4)">${fmt(x.kcal||0)}<span style="font-size:11px;color:var(--text-tertiary);font-weight:600"> kcal</span></div></div></div>`;
   }
+  if(m.type==="tutor"){
+    const done=x.status==="done";
+    return `<div class="rec">${acts}<div class="top">
+      <div class="chk js-chk ${done?'on':''}" data-id="${x.id}">${chkMark}</div>
+      <div class="body" data-edit="${x.id}"><div class="rname ${done?'done':''}">${esc(x.student||"学生")} · ${esc(x.subject||"课程")}</div>
+      <div class="rmeta"><span class="badge" style="background:${m.tint};color:${m.color}">${esc(x.start||"--:--")}–${esc(x.end||"--:--")}</span><span style="color:var(--text-secondary);font-size:12px">${done?"已上 · 课时费已入账":"待上 · 上完点左边打勾"}</span></div>
+      ${x.note?`<div class="rnote">${esc(x.note)}</div>`:''}${customBlock}</div>
+      <div class="amt ${done?'inc':''}" style="margin-left:auto;${done?"":"color:var(--text-tertiary)"}">¥${fmt(x.fee||0)}</div></div></div>`;
+  }
   // note
   return `<div class="rec">${acts}<div class="top"><div class="body" data-edit="${x.id}">
     <div class="rname">${esc(x.title||'无标题')}</div>
@@ -962,12 +1012,13 @@ function wireModule(key){
     e.stopPropagation(); const x=(data[key]).find(i=>i.id==el.dataset.id);
     if(m.type==="todo"){ x.done=!x.done; }
     else if(m.type==="fitness"){ x.log=x.log||{}; const t=today(); if(x.log[t]) delete x.log[t]; else x.log[t]={s:x.sets,r:x.reps,w:x.weight}; }
+    else if(m.type==="tutor"){ tutorToggleDone(x, x.status!=="done"); }
     persist();
   });
   $("#screen").querySelectorAll("[data-edit]").forEach(el=>el.onclick=()=>openEditor(key,(data[key]).find(i=>i.id==el.dataset.edit)));
   $("#screen").querySelectorAll(".js-del").forEach(el=>el.onclick=e=>{ e.stopPropagation(); confirmDelete(key, el.dataset.id); });
   const add=$("#btn-add"); if(add) add.onclick=()=>openEditor(key,null);
-  if(m.type==="todo"||m.type==="finance"||m.type==="diet") wireDateNav(key);
+  if(m.type==="todo"||m.type==="finance"||m.type==="diet"||m.type==="tutor") wireDateNav(key);
   if(m.type==="schedule"||m.type==="fitness"){
     $("#screen").querySelectorAll(".js-dow").forEach(el=>el.onclick=()=>{
       if(m.type==="schedule") schedDay=+el.dataset.dow; else gymDay=+el.dataset.dow;
@@ -979,7 +1030,7 @@ function wireModule(key){
 /* ---------- AI 助手（本地规则小脑袋，不联网） ---------- */
 function renderAI(m){
   const msgs=data.ai||[];
-  const chips=["今天午饭花了18块","早饭吃了两个鸡蛋一杯牛奶","我今天有什么课？","今天练什么？","我今天摄入了多少热量？","帮我安排今天"];
+  const chips=["明天下午3点给小雨排2小时数学，150块","我今天有家教吗？","小雨的课上完了","今天午饭花了18块","早饭吃了两个鸡蛋一杯牛奶","我今天有什么课？","今天练什么？","我今天摄入了多少热量？","帮我安排今天"];
   const bubbles=msgs.map(x=>{
     const av=x.role==="user"?"":`<span class="av">${icon("bot",16)}</span>`;
     return `<div class="msg ${x.role}">${av}<div class="bubble">${esc(x.text)}</div></div>`;
@@ -1107,6 +1158,57 @@ function aiDiet(t){
   }
   return "想记饮食的话，直接告诉我吃了什么，比如「早餐吃了两个鸡蛋一杯牛奶」。我认识鸡蛋、牛奶、米饭、鸡胸肉、牛肉、鱼虾、燕麦、香蕉等 20 多种常见食物，会自动帮你估算热量和蛋白质。";
 }
+function aiTutor(t){
+  if(!/(家教|排课|课时费)/.test(t) && !/给[小一-龥a-zA-Z]{1,4}(?:排|上|补)/.test(t) && !/课(?:上|教|补)?完了|课上完|下课了/.test(t)) return null;
+  const tutor=(data.tutor=data.tutor||[]);
+  let date=today(), dName="今天";
+  if(/明天/.test(t)){ date=shiftIso(today(),1); dName="明天"; }
+  else if(/后天/.test(t)){ date=shiftIso(today(),2); dName="后天"; }
+  else if(/昨天/.test(t)){ date=daysAgo(1); dName="昨天"; }
+  else { const w=t.match(/(?:周|星期)([一二三四五六日天])/); if(w){ const c=w[1]==="天"?"日":w[1]; const target="一二三四五六日".indexOf(c)+1; const diff=(target-todayDow()+7)%7; date=shiftIso(today(),diff); dName="周"+c; } }
+
+  // ① 上课打卡：「小雨的课上完了」
+  if(/(上完|下课|教完|补完|结束了)/.test(t)){
+    const pend=tutor.filter(x=>x.date===today()&&x.status!=="done");
+    let hit=pend.find(x=>x.student&&t.includes(x.student));
+    if(!hit&&pend.length===1) hit=pend[0];
+    if(hit){ tutorToggleDone(hit,true); return `已打卡 ✓ ${hit.student||"学生"}·${hit.subject||"课程"}（${hit.start||"--:--"}–${hit.end||"--:--"}）\n课时费 ¥${fmt(hit.fee||0)} 已自动记进「记账」的收入（分类：家教）。辛苦啦！`; }
+    if(pend.length>1) return `今天还有 ${pend.length} 节没打卡：${pend.map(x=>`${x.student||"学生"}·${x.subject||"课程"}`).join("、")}。\n告诉我是哪一节，比如「${pend[0].student||"小雨"}的课上完了」。`;
+    return "今天没有待上的家教课。想补记之前的课，去「家教」页翻到那天点「新建」补一条。";
+  }
+
+  // ② 收入统计：「这个月家教赚了多少」
+  if(/(赚|收入|课时费)[\s\S]*(多少|几)/.test(t)||/家教[\s\S]*收入/.test(t)||/多少[\s\S]*课时费/.test(t)){
+    const mm=today().slice(0,7);
+    const done=tutor.filter(x=>x.status==="done"&&(x.date||"").startsWith(mm));
+    const sum=done.reduce((s,x)=>s+(+x.fee||0),0);
+    return `这个月已经上完 ${done.length} 节家教课，课时费共 ¥${fmt(sum)}，都已自动记进「记账」的收入（分类：家教）。`;
+  }
+
+  // ③ 排课：「明天下午3点给小雨排2小时数学，150块」
+  const sm=t.match(/给\s*([小一-龥a-zA-Z]{1,4}?)(?:同学)?(?:排|上|补|教)/)||t.match(/([小一-龥a-zA-Z]{1,4}?)(?:同学)?的课/);
+  if(sm||/(排|点|小时|钟头|块|元)/.test(t)){
+    const student=sm?sm[1]:"学生";
+    const subjM=t.match(/(数学|英语|物理|化学|语文|生物|历史|地理|政治|编程|科学|钢琴|吉他|美术|画画|书法|作文|日语|韩语|法语)/);
+    const subject=subjM?subjM[1]:"课程";
+    let start="19:00";
+    const tm=t.match(/(上午|中午|下午|晚上|早上|今晚|明晚|傍晚)?\s*(\d{1,2})\s*(?:点|:|：)\s*(\d{1,2}|半)?/);
+    if(tm){ let h=+tm[2]; let mi=tm[3]==="半"?30:(tm[3]?+tm[3]:0); if(/^(下午|晚上|今晚|明晚|傍晚)$/.test(tm[1]||"")&&h<12) h+=12; if(h>23) h=19; start=String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0"); }
+    let dur=2; const dm=t.match(/(\d+(?:\.\d+)?|[一二两半三四五六七八九十]+)\s*(?:个)?\s*(?:小时|钟头)/);
+    if(dm){ dur=CN_NUM[dm[1]]; if(dur==null) dur=parseFloat(dm[1]); if(!isFinite(dur)||dur<=0||dur>6) dur=2; }
+    const parts=start.split(":"); const endMin=(+parts[0])*60+(+parts[1])+Math.round(dur*60);
+    const end=String(Math.min(23,Math.floor(endMin/60))).padStart(2,"0")+":"+String(endMin%60).padStart(2,"0");
+    const fm=t.match(/(\d+)\s*(?:块|元)/)||t.match(/课时费\s*(\d+)/);
+    const fee=fm?+fm[1]:0;
+    tutor.unshift({ id:Date.now(), student, subject, title:`${student}·${subject}`, date, start, end, fee, status:"pending", note:"AI 助手排课" });
+    return `已排好 ✓ ${dateLabel(date)} ${start}–${end}\n${student} · ${subject}${fee?` · 课时费 ¥${fee}`:"（没提课时费，先记 0；点这条记录可以改）"}\n到那天首页「今日家教」会显示；上完点一下打勾，课时费自动进「记账」收入。`;
+  }
+
+  // ④ 查课：「我今天有家教吗」
+  const list=tutor.filter(x=>x.date===date).sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
+  if(!list.length) return `${dName}没有排家教课。要排一节吗？直接说，比如「明天下午3点给小雨排2小时数学，150块」。`;
+  return `${dName}有 ${list.length} 节家教课：\n${list.map(x=>`${x.status==="done"?"✓":"○"} ${x.start||"--:--"}–${x.end||"--:--"} ${x.student||"学生"}·${x.subject||"课程"}${x.fee?" · ¥"+fmt(x.fee):""}`).join("\n")}\n上完课跟我说一声，我帮你打卡记账。`;
+}
 function aiCourse(t){
   if(!/(课|上课|教室)/.test(t)) return null;
   let d=todayDow(), name="今天";
@@ -1136,14 +1238,16 @@ function aiPlan(t){
   const spent=(data.money||[]).filter(x=>x.type!=="income"&&x.date===td).reduce((s,x)=>s+ +x.amount,0);
   const L=[];
   L.push(cs.length?`课 ${cs.length} 节：${cs.map(x=>(x.start||"")+" "+x.title).join("，")}`:"今天没课，是自学/训练的好日子");
+  const tt=(data.tutor||[]).filter(x=>x.date===td).sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
+  L.push(tt.length?`家教 ${tt.length} 节：${tt.map(x=>`${x.start||"--:--"} ${x.student||"学生"}·${x.subject||"课程"}${x.status==="done"?"（已上）":""}`).join("，")}`:"今天没排家教课");
   L.push(undone.length?`任务还剩 ${undone.length} 件：${undone.slice(0,3).map(x=>x.title).join("；")}${undone.length>3?" 等":""}`:"今日任务全部完成，漂亮");
   L.push(gym.length?`训练：${gym.slice(0,3).map(x=>x.title).join("、")}（已完成 ${gdone}/${gym.length}）`:"今天没安排训练，记得多走动");
   L.push(`目前已花 ¥${fmt(spent)}，悠着点`);
   return "给你捋了一下今天：\n"+L.map((x,i)=>`${i+1}. ${x}`).join("\n")+"\n建议节奏：上课 → 课间清任务 → 傍晚训练 → 晚上复盘记账。";
 }
 function aiReply(t){
-  return aiExpense(t)||aiDiet(t)||aiCourse(t)||aiGym(t)||aiPlan(t)||
-    "我现在能直接帮你做这些：\n· 记账：「今天午饭花了18块」\n· 记饮食：「早饭吃了两个鸡蛋一杯牛奶」\n· 查热量：「我今天摄入了多少热量」\n· 查课表：「我今天有什么课」\n· 查训练：「今天练什么」\n· 做安排：「帮我安排今天」";
+  return aiExpense(t)||aiDiet(t)||aiTutor(t)||aiCourse(t)||aiGym(t)||aiPlan(t)||
+    "我现在能直接帮你做这些：\n· 记账：「今天午饭花了18块」\n· 记饮食：「早饭吃了两个鸡蛋一杯牛奶」\n· 排家教：「明天下午3点给小雨排2小时数学，150块」\n· 家教打卡：「小雨的课上完了」\n· 查热量：「我今天摄入了多少热量」\n· 查课表：「我今天有什么课」\n· 查训练：「今天练什么」\n· 做安排：「帮我安排今天」";
 }
 
 /* ---------- EDITOR MODAL (per type) ---------- */
@@ -1175,6 +1279,14 @@ function openEditor(key, item){
       <div class="frow"><div class="field"><label>组数</label><input id="f-sets" type="number" value="${d.sets??3}"/></div>
       <div class="field"><label>次数</label><input id="f-reps" type="number" value="${d.reps??12}"/></div>
       <div class="field"><label>重量kg</label><input id="f-weight" type="number" value="${d.weight??0}" placeholder="0=自重"/></div></div>`;
+  } else if(m.type==="tutor"){
+    fields=`<div class="frow"><div class="field"><label>学生</label><input id="f-student" value="${attr(d.student||'')}" placeholder="小雨"/></div>
+      <div class="field"><label>科目</label><input id="f-subject" value="${attr(d.subject||'')}" placeholder="数学"/></div></div>
+      <div class="field"><label>日期</label><input id="f-date" type="date" value="${d.date||isoToday()}"/></div>
+      <div class="frow"><div class="field"><label>开始时间</label><input id="f-start" type="time" value="${attr(d.start||'19:00')}"/></div>
+      <div class="field"><label>结束时间</label><input id="f-end" type="time" value="${attr(d.end||'21:00')}"/></div></div>
+      <div class="field"><label>课时费 ¥（本次课）</label><input id="f-fee" type="number" value="${d.fee??''}" placeholder="150"/></div>
+      <div class="field"><label>备注</label><input id="f-note" value="${attr(d.note||'')}" placeholder="地点/方式，如：线上 · 腾讯会议"/></div>`;
   } else { // note
     fields=`<div class="field"><label>标题</label><input id="f-title" value="${attr(d.title)}" placeholder="给这条起个名"/></div>
       <div class="field"><label>内容</label><textarea id="f-content" placeholder="写点什么…">${esc(d.content||'')}</textarea></div>
@@ -1212,6 +1324,7 @@ function openEditor(key, item){
     else if(m.type==="finance"){ d.type=seg("#f-ftype")||"expense"; d.amount=Math.max(0,+val("#f-amt")||0); d.category=seg("#f-cat")||(m.categories&&m.categories[0])||"其他"; d.date=val("#f-date"); }
     else if(m.type==="schedule"){ d.day=+(seg("#f-dow")||d.day||1); d.start=val("#f-start")||"08:00"; d.end=val("#f-end")||"09:40"; d.room=(val("#f-room")||"").trim(); }
     else if(m.type==="fitness"){ d.day=+(seg("#f-dow")||d.day||1); d.sets=Math.max(1,Math.round(+val("#f-sets")||3)); d.reps=Math.max(1,Math.round(+val("#f-reps")||10)); d.weight=Math.max(0,+val("#f-weight")||0); }
+    else if(m.type==="tutor"){ d.student=(val("#f-student")||"").trim()||"学生"; d.subject=(val("#f-subject")||"").trim()||"课程"; d.title=`${d.student}·${d.subject}`; d.date=val("#f-date")||isoToday(); d.start=val("#f-start")||"19:00"; d.end=val("#f-end")||"21:00"; d.fee=Math.max(0,+val("#f-fee")||0); d.note=(val("#f-note")||"").trim(); d.status=d.status||"pending"; }
     else if(m.type==="note"){ d.content=(val("#f-content")||"").trim(); d.date=val("#f-date"); }
     (m.fields||[]).forEach(f=>{
       if(f.type==="select") d[f.key]=seg("#f-cf-"+f.key)||d[f.key]||"";
@@ -1230,6 +1343,7 @@ function newItem(m){
   else if(m.type==="finance") item={...base, title:"", type:"expense", amount:"", category:(m.categories&&m.categories[0])||"其他", date:isoToday()};
   else if(m.type==="schedule") item={...base, title:"", day:(schedDay||todayDow()), start:"08:00", end:"09:40", room:""};
   else if(m.type==="fitness") item={...base, title:"", day:(gymDay||todayDow()), sets:3, reps:12, weight:0, log:{}};
+  else if(m.type==="tutor") item={...base, student:"", subject:"", title:"", date:(tutorDate||isoToday()), start:"19:00", end:"21:00", fee:"", status:"pending", note:""};
   else item={...base, title:"", content:"", date:isoToday()};
   (m.fields||[]).forEach(f=>{ if(!(f.key in item)) item[f.key]= f.type==="select"?(f.options&&f.options[0]||""):""; });
   return item;
